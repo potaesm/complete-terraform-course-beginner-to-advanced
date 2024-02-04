@@ -1,28 +1,40 @@
-provider "aws" {}
-
-variable cidr_blocks {
-    description = "cidr blocks and name tags for vpc and subnets"
-    type = list(object({
-        cidr_block = string
-        name = string
-    }))
-}
-
-variable avail_zone {}
-
-resource "aws_vpc" "myapp-vpc" {
-    cidr_block = var.cidr_blocks[0].cidr_block
-    tags = {
-        Name: var.cidr_blocks[0].name
+terraform {
+    required_version = ">= 0.12"
+    backend "s3" {
+        bucket = "myapp-bucket"
+        key = "myapp/state.tfstate"
+        region = "eu-west-3"
     }
 }
 
-resource "aws_subnet" "myapp-subnet-1" {
-    vpc_id = aws_vpc.myapp-vpc.id
-    cidr_block = var.cidr_blocks[1].cidr_block
-    availability_zone = var.avail_zone
-    tags = {
-        Name: var.cidr_blocks[1].name
-    }
+provider "aws" {
+    region = "eu-west-3"
 }
 
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+
+  name = "my-vpc"
+  cidr = var.vpc_cidr_block
+
+  azs             = [var.avail_zone]
+  public_subnets  = [var.subnet_cidr_block]
+  public_subnet_tags = { Name = "${var.env_prefix}-subnet-1" }
+
+  tags = {
+    Name = "${var.env_prefix}-vpc"
+  }
+}
+
+
+module "myapp-server" {
+    source = "./modules/webserver"
+    vpc_id = module.vpc.vpc_id
+    my_ip = var.my_ip
+    env_prefix = var.env_prefix
+    image_name = var.image_name
+    public_key_location = var.public_key_location
+    instance_type = var.instance_type
+    subnet_id = module.vpc.public_subnets[0]
+    avail_zone = var.avail_zone
+}
